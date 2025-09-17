@@ -1,0 +1,77 @@
+<!-- Detail Sliding Panel -->
+<div id="detailModal" class="fixed inset-0 z-50 hidden">
+    <!-- Background overlay -->
+    <div class="fixed inset-0 bg-black bg-opacity-50 transition-opacity" onclick="closeModal()"></div>
+
+    <!-- Sliding panel -->
+    <div class="fixed inset-y-0 right-0 w-full max-w-lg bg-white dark:bg-gray-800 shadow-xl transform transition-transform duration-300 translate-x-full" 
+         id="slidePanel">
+        <!-- Header -->
+        <div class="flex items-center justify-between px-6 py-4 border-b border-gray-200 dark:border-gray-700">
+            <h3 class="text-xl font-semibold text-gray-900 dark:text-white">
+                Detail Peminjaman
+            </h3>
+            <button onclick="closeModal()" class="p-2 text-gray-400 hover:text-gray-500 focus:outline-none">
+                <svg class="h-6 w-6" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M6 18L18 6M6 6l12 12" />
+                </svg>
+            </button>
+        </div>
+
+        <!-- Content -->
+        <div class="h-full overflow-y-auto px-6 py-4">
+            <div class="space-y-6">
+                        <div class="mt-4 space-y-4">
+                            <!-- User Info -->
+                            <div>
+                                <h4 class="text-sm font-medium text-gray-500 dark:text-gray-400">Informasi Peminjam</h4>
+                                <p class="mt-1 text-sm text-gray-900 dark:text-white" id="userName"></p>
+                                <p class="text-sm text-gray-500 dark:text-gray-400" id="userEmail"></p>
+                            </div>
+
+                            <!-- Booking Info -->
+                            <div>
+                                <h4 class="text-sm font-medium text-gray-500 dark:text-gray-400">Informasi Ruangan</h4>
+                                <p class="mt-1 text-sm text-gray-900 dark:text-white" id="roomName"></p>
+                                <div class="mt-1">
+                                    <span class="text-sm text-gray-500 dark:text-gray-400">Tanggal: </span>
+                                    <span class="text-sm text-gray-900 dark:text-white" id="bookingDate"></span>
+                                </div>
+                                <div class="mt-1">
+                                    <span class="text-sm text-gray-500 dark:text-gray-400">Jam: </span>
+                                    <span class="text-sm text-gray-900 dark:text-white" id="bookingTime"></span>
+                                </div>
+                                <div class="mt-1">
+                                    <span class="text-sm text-gray-500 dark:text-gray-400">Keperluan: </span>
+                                    <span class="text-sm text-gray-900 dark:text-white" id="bookingPurpose"></span>
+                                </div>
+                            </div>
+
+                            <!-- Payment Info -->
+                            <div>
+                                <h4 class="text-sm font-medium text-gray-500 dark:text-gray-400">Informasi Pembayaran</h4>
+                                <div class="mt-1">
+                                    <span class="text-sm text-gray-500 dark:text-gray-400">Total Biaya: </span>
+                                    <span class="text-sm text-gray-900 dark:text-white" id="paymentAmount"></span>
+                                </div>
+                                <div class="mt-1">
+                                    <span class="text-sm text-gray-500 dark:text-gray-400">Status Pembayaran: </span>
+                                    <span class="text-sm font-medium" id="paymentStatus"></span>
+                                </div>
+                            </div>
+
+                            <!-- Payment Proof -->
+                            <div>
+                                <h4 class="text-sm font-medium text-gray-500 dark:text-gray-400">Bukti Pembayaran</h4>
+                                <div class="mt-2">
+                                    <img id="paymentProof" src="" alt="Bukti Pembayaran" class="max-w-full h-auto rounded-lg shadow-sm hidden">
+                                    <p id="noPaymentProof" class="text-sm text-gray-500 dark:text-gray-400 hidden">Belum ada bukti pembayaran</p>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+</div>

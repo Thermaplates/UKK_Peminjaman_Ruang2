@@ -9,6 +9,69 @@ use Illuminate\Support\Facades\Auth;
 
 class PeminjamanController extends Controller
 {
+    public function __construct()
+    {
+        $this->middleware('auth');
+        $this->middleware('role:admin,petugas')->only(['manage', 'approve', 'reject', 'verifikasiPembayaran']);
+    }
+
+    private $daysOfWeek = ['Senin', 'Selasa', 'Rabu', 'Kamis', 'Jumat', 'Sabtu'];
+    private $timeSlots = [
+        '08:00-09:00', '09:00-10:00', '10:00-11:00', '11:00-12:00', 
+        '13:00-14:00', '14:00-15:00', '15:00-16:00', '16:00-17:00'
+    ];
+
+    private function generateWeeklySchedule($ruang)
+    {
+        $schedule = [];
+        foreach ($this->daysOfWeek as $day) {
+            $schedule[$day] = [];
+            foreach ($this->timeSlots as $timeSlot) {
+                $schedule[$day][$timeSlot] = [
+                    'available' => true,
+                    'booking' => null
+                ];
+            }
+        }
+
+        // Get all bookings for this room for the current week
+        $startOfWeek = now()->startOfWeek();
+        $endOfWeek = now()->endOfWeek();
+        
+        $bookings = Peminjaman::where('ruang_id', $ruang->id)
+            ->whereBetween('tanggal', [$startOfWeek, $endOfWeek])
+            ->get();
+
+        // Mark booked slots
+        foreach ($bookings as $booking) {
+            $day = date('l', strtotime($booking->tanggal));
+            $dayIndo = $this->getDayInIndonesian($day);
+            
+            $timeSlot = $booking->jam_mulai . '-' . $booking->jam_selesai;
+            if (isset($schedule[$dayIndo][$timeSlot])) {
+                $schedule[$dayIndo][$timeSlot] = [
+                    'available' => false,
+                    'booking' => $booking
+                ];
+            }
+        }
+
+        return $schedule;
+    }
+
+    private function getDayInIndonesian($englishDay)
+    {
+        $days = [
+            'Monday' => 'Senin',
+            'Tuesday' => 'Selasa',
+            'Wednesday' => 'Rabu',
+            'Thursday' => 'Kamis',
+            'Friday' => 'Jumat',
+            'Saturday' => 'Sabtu',
+            'Sunday' => 'Minggu'
+        ];
+        return $days[$englishDay] ?? $englishDay;
+    }
     public function index()
     {
         $peminjaman = Peminjaman::with('ruang', 'user')->latest()->get();
@@ -21,18 +84,87 @@ class PeminjamanController extends Controller
         if (auth()->user()->role === 'admin') {
             return back()->with('error', 'Admin tidak dapat mengajukan peminjaman ruang!');
         }
-        $ruang = Ruang::all();
 
-        // Ambil semua ruang yang sudah dipinjam di tanggal yang dipilih (jika ada input tanggal)
-        $booked = [];
-        if ($request->has('tanggal')) {
-            $booked = Peminjaman::where('tanggal', $request->tanggal)
-                ->whereIn('status', ['pending', 'disetujui'])
-                ->pluck('ruang_id')
-                ->toArray();
+        $ruangList = Ruang::all();
+        $selectedRuang = null;
+        $regularSchedule = [];
+        $bookedTimeSlots = [];
+
+        // Get all bookings for the current week
+        $startOfWeek = now()->startOfWeek();
+        $endOfWeek = now()->endOfWeek();
+        
+        $weeklyBookings = Peminjaman::with(['ruang', 'user'])
+            ->whereBetween('tanggal', [$startOfWeek, $endOfWeek])
+            ->whereIn('status', ['pending', 'disetujui'])
+            ->get();
+
+        // Organize bookings by day and time slot
+        foreach ($weeklyBookings as $booking) {
+            $day = $this->getDayInIndonesian(date('l', strtotime($booking->tanggal)));
+            $timeSlot = substr($booking->jam_mulai, 0, 5) . '-' . substr($booking->jam_selesai, 0, 5);
+            
+            if (!isset($regularSchedule[$day])) {
+                $regularSchedule[$day] = [];
+            }
+            
+            if (!isset($regularSchedule[$day][$timeSlot])) {
+                $regularSchedule[$day][$timeSlot] = [];
+            }
+            
+            $regularSchedule[$day][$timeSlot][] = [
+                'ruang' => $booking->ruang->nama_ruang,
+                'user' => $booking->user->name,
+                'status' => $booking->status,
+                'keperluan' => $booking->keperluan
+            ];
         }
 
-        return view('peminjaman.create', compact('ruang', 'booked'));
+        if ($request->has('ruang_id')) {
+            $selectedRuang = Ruang::find($request->ruang_id);
+            if ($selectedRuang) {
+                $weeklySchedule = $this->generateWeeklySchedule($selectedRuang);
+            }
+        }
+
+        // Get bookings for specific date and room if selected
+        if ($request->has('tanggal')) {
+            $query = Peminjaman::with(['ruang', 'user'])
+                ->where('tanggal', $request->tanggal)
+                ->whereIn('status', ['pending', 'disetujui']);
+
+            if ($request->has('ruang_id')) {
+                $query->where('ruang_id', $request->ruang_id);
+                $selectedRuang = Ruang::find($request->ruang_id);
+            }
+
+            $bookings = $query->get();
+            
+            foreach ($bookings as $booking) {
+                $startTime = strtotime($booking->jam_mulai);
+                $endTime = strtotime($booking->jam_selesai);
+                
+                while ($startTime < $endTime) {
+                    $timeSlot = date('H:i', $startTime) . '-' . date('H:i', strtotime('+1 hour', $startTime));
+                    $bookedTimeSlots[$timeSlot] = [
+                        'ruang' => $booking->ruang->nama_ruang,
+                        'status' => $booking->status,
+                        'user' => $booking->user->name,
+                        'keperluan' => $booking->keperluan
+                    ];
+                    $startTime = strtotime('+1 hour', $startTime);
+                }
+            }
+        }
+
+        return view('peminjaman.create', [
+            'ruangList' => $ruangList,
+            'selectedRuang' => $selectedRuang,
+            'regularSchedule' => $regularSchedule,
+            'timeSlots' => $this->timeSlots,
+            'daysOfWeek' => $this->daysOfWeek,
+            'bookedTimeSlots' => $bookedTimeSlots
+        ]);
     }
 
     public function store(Request $request)
@@ -41,12 +173,16 @@ class PeminjamanController extends Controller
         if (auth()->user()->role === 'admin') {
             return back()->with('error', 'Admin tidak dapat mengajukan peminjaman ruang!');
         }
+
         $request->validate([
             'ruang_id' => 'required',
             'tanggal' => 'required|date',
             'jam_mulai' => 'required',
             'jam_selesai' => 'required',
             'keperluan' => 'required',
+            'bukti_pembayaran' => 'required|image|mimes:jpeg,png,jpg|max:2048'
+        ], [
+            'bukti_pembayaran.required' => 'Bukti pembayaran harus diunggah berupa file gambar (jpg, png)'
         ]);
 
         // Cek apakah ruang sudah dibooking pada waktu yang sama dan statusnya belum selesai
@@ -64,7 +200,13 @@ class PeminjamanController extends Controller
             return back()->with('error', 'Ruang sudah dibooking pada waktu tersebut!');
         }
 
-        Peminjaman::create([
+        // Calculate booking duration and cost
+        $mulai = strtotime($request->jam_mulai);
+        $selesai = strtotime($request->jam_selesai);
+        $durasi = ceil(($selesai - $mulai) / 3600); // Duration in hours
+        $biaya = $durasi * 50000; // Rp. 50.000 per hour
+
+        $peminjaman = Peminjaman::create([
             'user_id' => Auth::id(),
             'ruang_id' => $request->ruang_id,
             'tanggal' => $request->tanggal,
@@ -72,7 +214,21 @@ class PeminjamanController extends Controller
             'jam_selesai' => $request->jam_selesai,
             'keperluan' => $request->keperluan,
             'status' => 'pending',
+            'biaya' => $biaya,
+            'status_pembayaran' => 'belum_bayar'
         ]);
+
+        if ($request->hasFile('bukti_pembayaran')) {
+            $file = $request->file('bukti_pembayaran');
+            $filename = time() . '_' . $file->getClientOriginalName();
+            $file->storeAs('public/bukti_pembayaran', $filename);
+
+            $peminjaman->update([
+                'bukti_pembayaran' => $filename,
+                'status_pembayaran' => 'menunggu_verifikasi',
+                'waktu_pembayaran' => now()
+            ]);
+        }
 
         return redirect()->route('home')->with('success', 'Pengajuan peminjaman berhasil dibuat!');
     }
@@ -85,13 +241,31 @@ class PeminjamanController extends Controller
 
     public function manage()
     {
-        $peminjaman = Peminjaman::with('ruang', 'user')->where('status', 'pending')->get();
+        $peminjaman = Peminjaman::with('ruang', 'user')
+            ->where('status', '!=', 'disetujui')
+            ->latest()
+            ->get();
         return view('peminjaman.manage', compact('peminjaman'));
+    }
+
+    public function verifikasiPembayaran()
+    {
+        $peminjaman = Peminjaman::with(['ruang', 'user'])
+            ->where('status_pembayaran', 'menunggu_verifikasi')
+            ->orderBy('created_at', 'desc')
+            ->get();
+        
+        return view('peminjaman.verifikasi-pembayaran', compact('peminjaman'));
     }
 
     public function approve($id)
     {
         $pinjam = Peminjaman::findOrFail($id);
+        
+        if ($pinjam->status_pembayaran !== 'lunas') {
+            return back()->with('error', 'Pembayaran harus diverifikasi terlebih dahulu sebelum menyetujui peminjaman.');
+        }
+        
         $pinjam->update(['status' => 'disetujui']);
         return back()->with('success', 'Peminjaman disetujui');
     }
@@ -101,6 +275,13 @@ class PeminjamanController extends Controller
         $pinjam = Peminjaman::findOrFail($id);
         $pinjam->update(['status' => 'ditolak']);
         return back()->with('success', 'Peminjaman ditolak');
+    }
+
+    public function detail($id)
+    {
+        $peminjaman = Peminjaman::with(['ruang', 'user'])
+            ->findOrFail($id);
+        return response()->json($peminjaman);
     }
 
     public function destroy($id)
